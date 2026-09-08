@@ -33,6 +33,7 @@ class OpsClient:
         self,
         service: str,
         level: str | None = None,
+        trace_id: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
@@ -42,10 +43,14 @@ class OpsClient:
         if level is not None:
             params["level"] = level
 
+        if trace_id is not None:
+            params["trace_id"] = trace_id
+
         response = self._client.get(
             f"/services/{service}/logs",
             params=params,
         )
+
         response.raise_for_status()
 
         return response.json()

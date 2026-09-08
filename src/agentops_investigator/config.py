@@ -2,6 +2,8 @@ import os
 
 from dotenv import load_dotenv
 
+from pathlib import Path
+
 
 load_dotenv()
 
@@ -25,6 +27,13 @@ OPENAI_MODEL = os.getenv(
     "OPENAI_MODEL",
     "gpt-5.6-luna",
 )
+
+LAB_DOCS_PATH = Path(
+    os.getenv(
+        "LAB_DOCS_PATH",
+        "../agent-incident-lab/docs",
+    )
+).resolve()
 
 
 def get_llm_model() -> str:

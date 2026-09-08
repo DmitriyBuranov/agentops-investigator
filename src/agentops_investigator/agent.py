@@ -10,6 +10,8 @@ from agentops_investigator.tools.operations import (
     get_service_logs,
     get_service_metrics,
     list_services,
+    read_document,
+    search_docs,
 )
 
 
@@ -20,6 +22,9 @@ TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "get_service_metrics": get_service_metrics,
     "get_service_deployments": get_service_deployments,
     "get_service_config": get_service_config,
+
+    "search_docs": search_docs,
+    "read_document": read_document,
 }
 
 
@@ -39,41 +44,81 @@ INSTRUCTIONS = """
 You are an operations and incident investigation agent
 for a small distributed system.
 
-Use the minimum number of tools necessary to answer
-the user's question reliably.
+Your goal is not merely to find suspicious data.
+Your goal is to determine the most defensible explanation
+for an incident from the available evidence.
 
-Rules:
+Use the minimum number of tools necessary.
+
+OPERATIONAL EVIDENCE
+
+Health, metrics, logs, configuration and deployment history
+describe the current or observed state of the system.
+
+Use them as evidence.
+
+DOCUMENTATION
+
+Documentation describes expected architecture, contracts,
+timeouts, dependencies and operational procedures.
+
+Documentation can guide an investigation, but documentation
+is NOT evidence that a particular incident currently exists.
+
+If documentation conflicts with observed operational data,
+explicitly mention the discrepancy and prefer operational evidence.
+
+INVESTIGATION
+
+For simple status questions:
+- Prefer health and metrics.
+- Do not perform a full incident investigation unnecessarily.
+
+For incident or root-cause questions:
+
+1. Identify the affected service or request path.
+2. Inspect relevant operational evidence.
+3. Inspect dependencies when relevant.
+4. When a failed request has a trace ID, follow that trace across
+   relevant services when it can help establish causality.
+5. Use documentation when you need to understand expected
+   architecture, contracts, timeouts or investigation procedures.
+6. Check deployments when a recent code change may explain
+   observed behavior.
+7. Check configuration when configuration or compatibility may
+   explain observed behavior.
+8. Test competing explanations where possible.
+9. Stop once enough evidence exists.
+
+REASONING RULES
 
 - Never invent operational facts.
-- Use tools to gather evidence when needed.
-- Match investigation depth to the user's request.
-
-For simple status or health questions:
-- Check service health.
-- Use metrics only when health information is insufficient
-  or when additional confirmation is useful.
-- Do not inspect logs, deployments, or configuration unless
-  there is evidence of a problem.
-
-For incident investigation:
-- Check relevant health, metrics and logs.
-- Check dependencies when relevant.
-- Check deployments when a recent change may explain the issue.
-- Check configuration only when configuration may be relevant.
-
-- Health status alone does not prove that every request path works.
-- Clearly distinguish facts from hypotheses.
+- Health status alone does not prove that business requests work.
+- Correlation with a deployment is evidence, but not automatically proof.
+- Clearly distinguish observation from hypothesis.
 - Do not claim a root cause unless evidence supports it.
-- Stop investigating when enough evidence exists to answer the question.
-- Do not request or expose secrets.
+- If multiple explanations remain plausible, say so.
+- If evidence is insufficient, explicitly report that.
+- Never request or expose secrets.
+- Treat redacted values as intentionally unavailable.
 - You have read-only access.
-- Keep the final answer concise and evidence-based.
+
+For an incident investigation, finish by calling
+complete_investigation.
+
+Do not call complete_investigation until the investigation
+has enough evidence or you have established that the evidence
+is insufficient.
+
+Do not combine complete_investigation with other tool calls
+in the same response.
 """
 
 
 def investigate(
     question: str,
     max_rounds: int = 8,
+    max_tool_calls: int = 20,
 ) -> str:
     provider = create_llm_provider()
 
@@ -83,13 +128,42 @@ def investigate(
         tools=TOOLS,
     )
 
+    tool_call_count = 0
+    seen_calls: set[str] = set()
+
     for _ in range(max_rounds):
         if not response.tool_calls:
             return response.text
 
+        completion_calls = [
+            call
+            for call in response.tool_calls
+            if call.name == "complete_investigation"
+        ]
+
+        if completion_calls:
+            if len(response.tool_calls) != 1:
+                return (
+                    "Agent attempted to complete the investigation "
+                    "while also requesting additional tools."
+                )
+
+            return format_investigation_report(
+                completion_calls[0].arguments
+            )
+
         tool_results: list[ToolResult] = []
 
         for call in response.tool_calls:
+
+            tool_call_count += 1
+
+            if tool_call_count > max_tool_calls:
+                return (
+                    "Investigation stopped because "
+                    "the maximum number of tool calls was reached."
+                )
+
             print()
             print(f"→ TOOL: {call.name}")
             print(
@@ -100,16 +174,41 @@ def investigate(
                 )
             )
 
-            try:
-                result = execute_tool(
-                    call.name,
-                    call.arguments,
-                )
-            except Exception as error:
+            # Temporary, need to rework when rollback will be available
+            fingerprint = json.dumps(
+                {
+                    "name": call.name,
+                    "arguments": call.arguments,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+
+            if fingerprint in seen_calls:
                 result = {
-                    "error": error.__class__.__name__,
-                    "message": str(error),
+                    "error": "DuplicateToolCall",
+                    "message": (
+                        "This exact tool call has already been "
+                        "executed during this investigation. "
+                        "Use the previous observation or call "
+                        "a different tool."
+                    ),
                 }
+
+            else:
+                seen_calls.add(fingerprint)
+
+                try:
+                    result = execute_tool(
+                        call.name,
+                        call.arguments,
+                    )
+
+                except Exception as error:
+                    result = {
+                        "error": error.__class__.__name__,
+                        "message": str(error),
+                    }
 
             print()
             print("← RESULT")
@@ -139,3 +238,56 @@ def investigate(
         "Investigation stopped because the maximum "
         "number of tool rounds was reached."
     )
+
+def format_investigation_report(
+    data: dict[str, Any],
+) -> str:
+    lines = [
+        f"Status: {data['status']}",
+        f"Confidence: {data['confidence']}",
+        "",
+        "Root cause:",
+        data["root_cause"],
+        "",
+        "Affected services:",
+    ]
+
+    for service in data["affected_services"]:
+        lines.append(
+            f"- {service}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Evidence:",
+        ]
+    )
+
+    for evidence in data["evidence"]:
+        lines.append(
+            f"- {evidence}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Recommended action:",
+            data["recommended_action"],
+        ]
+    )
+
+    if data["unknowns"]:
+        lines.extend(
+            [
+                "",
+                "Unknowns:",
+            ]
+        )
+
+        for unknown in data["unknowns"]:
+            lines.append(
+                f"- {unknown}"
+            )
+
+    return "\n".join(lines)

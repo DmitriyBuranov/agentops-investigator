@@ -45,8 +45,9 @@ TOOLS = [
         name="get_service_logs",
         description=(
             "Get recent structured logs for a service. "
-            "Use level ERROR when investigating errors. "
-            "Omit level when all log levels are needed."
+            "Use a trace_id to follow one request across services. "
+            "Use level ERROR to discover failures. "
+            "Health alone does not prove request paths work."
         ),
         parameters={
             "type": "object",
@@ -56,10 +57,21 @@ TOOLS = [
                 },
                 "level": {
                     "type": "string",
-                    "description": "Optional log level, for example ERROR or INFO.",
+                    "description": (
+                        "Optional log level such as ERROR or INFO."
+                    ),
+                },
+                "trace_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional trace ID used to follow one "
+                        "request across service boundaries."
+                    ),
                 },
             },
-            "required": ["service"],
+            "required": [
+                "service",
+            ],
             "additionalProperties": False,
         },
     ),
@@ -116,6 +128,119 @@ TOOLS = [
                 },
             },
             "required": ["service"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDefinition(
+        name="search_docs",
+        description=(
+            "Search the system documentation and runbooks. "
+            "Use documentation to understand expected architecture, "
+            "service contracts and investigation procedures. "
+            "Documentation describes expected behavior and is not "
+            "evidence of the current incident."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Search query describing the operational "
+                        "or architectural information needed."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                },
+            },
+            "required": [
+                "query",
+            ],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDefinition(
+        name="read_document",
+        description=(
+            "Read a Markdown document returned by search_docs. "
+            "The path must be relative to the documentation root."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                },
+            },
+            "required": [
+                "path",
+            ],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDefinition(
+        name="complete_investigation",
+        description=(
+            "Finish an incident investigation with a structured report. "
+            "Call this only after enough evidence has been collected "
+            "or when the available evidence is insufficient."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "root_cause_identified",
+                        "likely_cause",
+                        "insufficient_evidence",
+                    ],
+                },
+                "root_cause": {
+                    "type": "string",
+                },
+                "confidence": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                    ],
+                },
+                "affected_services": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                    },
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                    },
+                },
+                "recommended_action": {
+                    "type": "string",
+                },
+                "unknowns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                    },
+                },
+            },
+            "required": [
+                "status",
+                "root_cause",
+                "confidence",
+                "affected_services",
+                "evidence",
+                "recommended_action",
+                "unknowns",
+            ],
             "additionalProperties": False,
         },
     ),
