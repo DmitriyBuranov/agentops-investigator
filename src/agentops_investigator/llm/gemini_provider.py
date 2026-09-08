@@ -66,16 +66,26 @@ class GeminiProvider(LLMProvider):
             raise ValueError("Gemini response state is missing conversation history.")
 
         function_responses = []
+
         for result in tool_results:
-            kwargs: dict[str, Any] = {
+            function_response_kwargs: dict[str, Any] = {
                 "name": result.call.name,
-                "response": {"result": result.output},
+                "response": {
+                    "result": result.output,
+                },
             }
+
             if result.call.id:
-                kwargs["id"] = result.call.id
+                function_response_kwargs["id"] = result.call.id
+
+            function_response = types.FunctionResponse(
+                **function_response_kwargs
+            )
 
             function_responses.append(
-                types.Part.from_function_response(**kwargs)
+                types.Part(
+                    function_response=function_response
+                )
             )
 
         contents = [
