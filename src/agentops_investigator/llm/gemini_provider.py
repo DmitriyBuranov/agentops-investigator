@@ -63,7 +63,7 @@ class GeminiProvider(LLMProvider):
         tools: list[ToolDefinition],
     ) -> LLMResponse:
         if not isinstance(previous.state, _GeminiState):
-            raise ValueError("Gemini response state is missing conversation history.")
+            raise TypeError("Gemini response state is missing conversation history.")
 
         function_responses = []
 
@@ -78,15 +78,9 @@ class GeminiProvider(LLMProvider):
             if result.call.id:
                 function_response_kwargs["id"] = result.call.id
 
-            function_response = types.FunctionResponse(
-                **function_response_kwargs
-            )
+            function_response = types.FunctionResponse(**function_response_kwargs)
 
-            function_responses.append(
-                types.Part(
-                    function_response=function_response
-                )
-            )
+            function_responses.append(types.Part(function_response=function_response))
 
         contents = [
             *previous.state.contents,
@@ -175,7 +169,5 @@ class GeminiProvider(LLMProvider):
         return LLMResponse(
             text="".join(text_parts),
             tool_calls=tool_calls,
-            state=_GeminiState(
-                contents=[*input_contents, model_content]
-            ),
+            state=_GeminiState(contents=[*input_contents, model_content]),
         )

@@ -1,44 +1,12 @@
 import json
-from typing import Any, Callable
+from typing import Any
+
+from mcp import Client
+from mcp.types import TextContent
 
 from agentops_investigator.llm import ToolResult, create_llm_provider
-from agentops_investigator.tools.definitions import TOOLS
-from agentops_investigator.tools.operations import (
-    get_service_config,
-    get_service_deployments,
-    get_service_health,
-    get_service_logs,
-    get_service_metrics,
-    list_services,
-    read_document,
-    search_docs,
-)
-
-
-TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
-    "list_services": list_services,
-    "get_service_health": get_service_health,
-    "get_service_logs": get_service_logs,
-    "get_service_metrics": get_service_metrics,
-    "get_service_deployments": get_service_deployments,
-    "get_service_config": get_service_config,
-
-    "search_docs": search_docs,
-    "read_document": read_document,
-}
-
-
-def execute_tool(
-    name: str,
-    arguments: dict[str, Any],
-) -> Any:
-    handler = TOOL_HANDLERS.get(name)
-
-    if handler is None:
-        raise ValueError(f"Unknown tool: {name}")
-
-    return handler(**arguments)
-
+from agentops_investigator.mcp_client.client import load_mcp_tool_definitions
+from agentops_investigator.tools.definitions import COMPLETE_INVESTIGATION_TOOL
 
 INSTRUCTIONS = """
 You are an operations and incident investigation agent
@@ -115,17 +83,54 @@ in the same response.
 """
 
 
-def investigate(
+def extract_text(result: Any) -> str:
+    """Extract model-readable text blocks from an MCP tool result."""
+    return "\n".join(
+        block.text for block in result.content if isinstance(block, TextContent)
+    )
+
+
+async def execute_mcp_tool(
+    mcp_client: Client,
+    name: str,
+    arguments: dict[str, Any],
+) -> Any:
+    """Execute one MCP tool and return a provider-neutral result."""
+    result = await mcp_client.call_tool(
+        name,
+        arguments,
+    )
+
+    if result.is_error:
+        return {
+            "error": "MCPToolError",
+            "message": extract_text(result),
+        }
+
+    if result.structured_content is not None:
+        return result.structured_content
+
+    return extract_text(result)
+
+
+async def investigate(
+    mcp_client: Client,
     question: str,
     max_rounds: int = 8,
     max_tool_calls: int = 20,
 ) -> str:
     provider = create_llm_provider()
 
+    mcp_tools = await load_mcp_tool_definitions(mcp_client)
+    tools = [
+        *mcp_tools,
+        COMPLETE_INVESTIGATION_TOOL,
+    ]
+
     response = provider.start(
         question=question,
         instructions=INSTRUCTIONS,
-        tools=TOOLS,
+        tools=tools,
     )
 
     tool_call_count = 0
@@ -138,7 +143,7 @@ def investigate(
         completion_calls = [
             call
             for call in response.tool_calls
-            if call.name == "complete_investigation"
+            if call.name == COMPLETE_INVESTIGATION_TOOL.name
         ]
 
         if completion_calls:
@@ -148,14 +153,11 @@ def investigate(
                     "while also requesting additional tools."
                 )
 
-            return format_investigation_report(
-                completion_calls[0].arguments
-            )
+            return format_investigation_report(completion_calls[0].arguments)
 
         tool_results: list[ToolResult] = []
 
         for call in response.tool_calls:
-
             tool_call_count += 1
 
             if tool_call_count > max_tool_calls:
@@ -174,7 +176,8 @@ def investigate(
                 )
             )
 
-            # Temporary, need to rework when rollback will be available
+            # Temporary read-only optimization. Revisit once write actions
+            # (for example rollback) can intentionally change system state.
             fingerprint = json.dumps(
                 {
                     "name": call.name,
@@ -185,6 +188,7 @@ def investigate(
             )
 
             if fingerprint in seen_calls:
+                print("⚠ Duplicate tool call blocked")
                 result = {
                     "error": "DuplicateToolCall",
                     "message": (
@@ -194,17 +198,16 @@ def investigate(
                         "a different tool."
                     ),
                 }
-
             else:
                 seen_calls.add(fingerprint)
 
                 try:
-                    result = execute_tool(
-                        call.name,
-                        call.arguments,
+                    result = await execute_mcp_tool(
+                        mcp_client=mcp_client,
+                        name=call.name,
+                        arguments=call.arguments,
                     )
-
-                except Exception as error:
+                except Exception as error: # noqa: BLE001 - tool boundary must isolate arbitrary tool failures
                     result = {
                         "error": error.__class__.__name__,
                         "message": str(error),
@@ -231,13 +234,13 @@ def investigate(
             previous=response,
             tool_results=tool_results,
             instructions=INSTRUCTIONS,
-            tools=TOOLS,
+            tools=tools,
         )
 
     return (
-        "Investigation stopped because the maximum "
-        "number of tool rounds was reached."
+        "Investigation stopped because the maximum number of tool rounds was reached."
     )
+
 
 def format_investigation_report(
     data: dict[str, Any],
@@ -253,21 +256,12 @@ def format_investigation_report(
     ]
 
     for service in data["affected_services"]:
-        lines.append(
-            f"- {service}"
-        )
+        lines.append(f"- {service}")
 
-    lines.extend(
-        [
-            "",
-            "Evidence:",
-        ]
-    )
+    lines.extend(["", "Evidence:"])
 
     for evidence in data["evidence"]:
-        lines.append(
-            f"- {evidence}"
-        )
+        lines.append(f"- {evidence}")
 
     lines.extend(
         [
@@ -278,16 +272,9 @@ def format_investigation_report(
     )
 
     if data["unknowns"]:
-        lines.extend(
-            [
-                "",
-                "Unknowns:",
-            ]
-        )
+        lines.extend(["", "Unknowns:"])
 
         for unknown in data["unknowns"]:
-            lines.append(
-                f"- {unknown}"
-            )
+            lines.append(f"- {unknown}")
 
     return "\n".join(lines)

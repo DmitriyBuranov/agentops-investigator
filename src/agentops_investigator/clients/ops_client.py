@@ -22,9 +22,7 @@ class OpsClient:
         self,
         service: str,
     ) -> dict[str, Any]:
-        response = self._client.get(
-            f"/services/{service}/health"
-        )
+        response = self._client.get(f"/services/{service}/health")
         response.raise_for_status()
 
         return response.json()
@@ -89,9 +87,7 @@ class OpsClient:
         self,
         service: str,
     ) -> dict[str, Any]:
-        response = self._client.get(
-            f"/services/{service}/config"
-        )
+        response = self._client.get(f"/services/{service}/config")
         response.raise_for_status()
 
         return response.json()

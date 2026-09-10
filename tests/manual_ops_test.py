@@ -1,6 +1,5 @@
 from agentops_investigator.clients.ops_client import OpsClient
 
-
 client = OpsClient()
 
 print("SERVICES")

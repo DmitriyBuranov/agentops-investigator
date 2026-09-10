@@ -18,6 +18,5 @@ def create_llm_provider() -> LLMProvider:
         return OpenAIProvider(model=OPENAI_MODEL)
 
     raise ValueError(
-        f"Unsupported LLM_PROVIDER={LLM_PROVIDER!r}. "
-        "Supported values: gemini, openai."
+        f"Unsupported LLM_PROVIDER={LLM_PROVIDER!r}. Supported values: gemini, openai."
     )

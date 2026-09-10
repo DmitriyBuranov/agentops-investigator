@@ -1,10 +1,8 @@
 from typing import Any
 
 from agentops_investigator.clients.ops_client import OpsClient
-
 from agentops_investigator.config import LAB_DOCS_PATH
 from agentops_investigator.knowledge.store import KnowledgeStore
-
 
 _ops = OpsClient()
 
@@ -31,6 +29,7 @@ def get_service_logs(
         limit=100,
     )
 
+
 def get_service_metrics(
     service: str,
     window_minutes: int,
@@ -55,9 +54,9 @@ def get_service_config(
 ) -> dict[str, Any]:
     return _ops.get_config(service)
 
-_knowledge = KnowledgeStore(
-    LAB_DOCS_PATH
-)
+
+_knowledge = KnowledgeStore(LAB_DOCS_PATH)
+
 
 def search_docs(
     query: str,

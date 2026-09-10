@@ -20,15 +20,10 @@ def test_search_finds_matching_document(
 
     store = KnowledgeStore(tmp_path)
 
-    results = store.search(
-        "payment deployment"
-    )
+    results = store.search("payment deployment")
 
     assert len(results) == 1
-    assert (
-        results[0]["path"]
-        == "runbooks/payment-errors.md"
-    )
+    assert results[0]["path"] == "runbooks/payment-errors.md"
 
 
 def test_cannot_read_outside_docs(
@@ -47,6 +42,4 @@ def test_cannot_read_outside_docs(
     store = KnowledgeStore(docs)
 
     with pytest.raises(ValueError):
-        store.read_document(
-            "../secret.txt"
-        )
+        store.read_document("../secret.txt")

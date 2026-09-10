@@ -51,7 +51,7 @@ class OpenAIProvider(LLMProvider):
         tools: list[ToolDefinition],
     ) -> LLMResponse:
         if not isinstance(previous.state, str):
-            raise ValueError("OpenAI response state is missing the response id.")
+            raise TypeError("OpenAI response state is missing the response id.")
 
         tool_outputs = [
             {

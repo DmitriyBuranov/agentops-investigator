@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 
@@ -17,15 +17,11 @@ class KnowledgeStore:
         results: list[dict[str, Any]] = []
 
         for path in self._root.rglob("*.md"):
-            text = path.read_text(
-                encoding="utf-8"
-            )
+            text = path.read_text(encoding="utf-8")
 
             lower_text = text.lower()
 
-            relative_path = path.relative_to(
-                self._root
-            ).as_posix()
+            relative_path = path.relative_to(self._root).as_posix()
 
             lower_path = relative_path.lower()
 
@@ -64,31 +60,22 @@ class KnowledgeStore:
         self,
         relative_path: str,
     ) -> dict[str, Any]:
-        path = (
-            self._root / relative_path
-        ).resolve()
+        path = (self._root / relative_path).resolve()
 
         try:
             path.relative_to(self._root)
         except ValueError:
             raise ValueError(
-                "Document path is outside "
-                "the allowed documentation directory."
+                "Document path is outside the allowed documentation directory."
             )
 
         if path.suffix.lower() != ".md":
-            raise ValueError(
-                "Only Markdown documents are allowed."
-            )
+            raise ValueError("Only Markdown documents are allowed.")
 
         if not path.is_file():
-            raise FileNotFoundError(
-                f"Document not found: {relative_path}"
-            )
+            raise FileNotFoundError(f"Document not found: {relative_path}")
 
-        text = path.read_text(
-            encoding="utf-8"
-        )
+        text = path.read_text(encoding="utf-8")
 
         max_chars = 12_000
 
@@ -117,11 +104,7 @@ class KnowledgeStore:
     ) -> str:
         lower = text.lower()
 
-        positions = [
-            lower.find(term)
-            for term in terms
-            if lower.find(term) >= 0
-        ]
+        positions = [lower.find(term) for term in terms if lower.find(term) >= 0]
 
         position = min(positions) if positions else 0
 

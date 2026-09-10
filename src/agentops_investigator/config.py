@@ -1,9 +1,7 @@
 import os
-
-from dotenv import load_dotenv
-
 from pathlib import Path
 
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -13,10 +11,14 @@ OPS_SERVICE_URL = os.getenv(
     "http://localhost:8003",
 )
 
-LLM_PROVIDER = os.getenv(
-    "LLM_PROVIDER",
-    "gemini",
-).strip().lower()
+LLM_PROVIDER = (
+    os.getenv(
+        "LLM_PROVIDER",
+        "gemini",
+    )
+    .strip()
+    .lower()
+)
 
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
